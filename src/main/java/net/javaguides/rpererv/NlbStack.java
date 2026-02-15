@@ -45,7 +45,7 @@ public class NlbStack extends Stack {
         );
 
         // 2. Crear el Listener del ALB (donde llegarán las rutas de los microservicios)
-        this.applicationListener = this.applicationLoadBalancer.addListener("AlbListener",
+        this.applicationListener = this.applicationLoadBalancer.addListener("ProductsServiceAlbListener",
                 BaseApplicationListenerProps.builder()
                         .port(80)
                         .open(true)

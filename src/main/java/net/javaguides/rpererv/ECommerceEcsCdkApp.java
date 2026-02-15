@@ -11,8 +11,8 @@ public class ECommerceEcsCdkApp {
         App app = new App();
 
         final Environment environment = Environment.builder()
-                .account("")
-                .region("us-east-1")
+                .account(System.getenv("CDK_DEFAULT_ACCOUNT"))
+                .region(System.getenv("CDK_DEFAULT_REGION"))
                 .build();
 
         Map<String, String> infraestructureTags = new HashMap<>();
@@ -20,21 +20,21 @@ public class ECommerceEcsCdkApp {
         infraestructureTags.put("cost", "ECommerceInfraestructure");
 
         // ------------------------------------------------------------------------------------------------------------
-        // Create the ECR
+        // 1. Create the ECR (Respository for the Docker image of the products' microservice)
         EcrStack ecrStack = new EcrStack(app, "EComerceEcr", StackProps.builder()
                 .env(environment)
                 .tags(infraestructureTags)
                 .build());
 
         // ------------------------------------------------------------------------------------------------------------
-        // Create the VPC
+        // 2. Red. Create the VPC
         VpcStack vpcStack = new VpcStack(app, "EComerceVpc", StackProps.builder()
                 .env(environment)
                 .tags(infraestructureTags)
                 .build());
 
         // ------------------------------------------------------------------------------------------------------------
-        // Create the ECS cluster
+        // 3. Cluster Create the ECS cluster
         ClusterStack clusterStack = new ClusterStack(app, "EComerceCluster",
                 StackProps.builder()
                     .env(environment)
@@ -44,7 +44,7 @@ public class ECommerceEcsCdkApp {
         clusterStack.addDependency(ecrStack);
 
         // -----------------------------------------------------------------------------------------------------------
-        // Create the Network Load Balancer, Vpc Link and Application Load Balancer
+        // 4. Infraestructura de Red Interna (NLB + ALB) Create the Network Load Balancer, Vpc Link and Application Load Balancer
         NlbStack nlbStack = new NlbStack(app, "EComerceNlb",
                 StackProps.builder()
                     .env(environment)
@@ -54,7 +54,21 @@ public class ECommerceEcsCdkApp {
         nlbStack.addDependency(clusterStack);
 
         // -----------------------------------------------------------------------------------------------------------
-        // 5. Create the API Gateway (Prueba de infraestructura)
+        // 5. Create the Product Service (Fargate Service)
+        ProductServiceStack productServiceStack = new ProductServiceStack(app, "EComerceProductService",
+                StackProps.builder()
+                        .env(environment)
+                        .tags(infraestructureTags)
+                        .build(),
+                new ProductServiceProps(
+                        vpcStack.getVpc(),
+                        clusterStack.getCluster(),
+                        nlbStack, // Pasamos el stack completo para acceder al listener
+                        ecrStack.getProductsServiceRepository()
+                ));
+
+        // -----------------------------------------------------------------------------------------------------------
+        // 6. Create the API Gateway (Prueba de infraestructura)
         // Pasamos el nlbStack como argumento para extraer la integración
         ApiStack apiStack = new ApiStack(app, "EComerceApi",
                 StackProps.builder()
@@ -65,7 +79,6 @@ public class ECommerceEcsCdkApp {
 
         // La API no puede existir sin el VpcLink y el NLB definidos en NlbStack
         apiStack.addDependency(nlbStack);
-
 
         app.synth();
     }

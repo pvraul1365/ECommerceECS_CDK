@@ -42,5 +42,17 @@ public class ApiStack extends Stack {
                 .value(httpApi.getApiEndpoint() + "/test")
                 .description("URL para probar el encadenamiento NLB -> ALB")
                 .build();
+
+        // RUTA NUEVA: Para el microservicio de productos
+        httpApi.addRoutes(AddRoutesOptions.builder()
+                .path("/api/products") // Coincide con tu Controller de Spring
+                .methods(Collections.singletonList(HttpMethod.GET))
+                .integration(nlbStack.getNlbIntegration())
+                .build());
+
+        CfnOutput.Builder.create(this, "ProductsEndpoint")
+                .value(httpApi.getApiEndpoint() + "/api/products")
+                .description("URL para ver tus productos de Spring Boot")
+                .build();
     }
 }
