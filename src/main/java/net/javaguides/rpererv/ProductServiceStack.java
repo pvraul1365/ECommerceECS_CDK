@@ -41,6 +41,12 @@ public class ProductServiceStack extends Stack {
                         .family("products-service") // name of the task definition, same as the family name in the ECS service
                         .cpu(512) // 0.5 vCPU
                         .memoryLimitMiB(1024) // 1 GB RAM
+                        // --- ESTO ES LO NUEVO ---
+                        .runtimePlatform(RuntimePlatform.builder()
+                                .cpuArchitecture(CpuArchitecture.ARM64) // <--- Idioma nativo M4
+                                .operatingSystemFamily(OperatingSystemFamily.LINUX)
+                                .build())
+                        // ------------------------
                         .build());
 
         // 2. Log Driver for Container Definition

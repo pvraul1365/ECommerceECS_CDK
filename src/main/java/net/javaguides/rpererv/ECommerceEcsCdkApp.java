@@ -55,10 +55,13 @@ public class ECommerceEcsCdkApp {
 
         // -----------------------------------------------------------------------------------------------------------
         // 5. Create the Product Service (Fargate Service)
-        ProductServiceStack productServiceStack = new ProductServiceStack(app, "EComerceProductService",
+        Map<String, String> productsServiceTags = new HashMap<>();
+        infraestructureTags.put("team", "RperezvCode");
+        infraestructureTags.put("cost", "ProductsService");
+        ProductServiceStack productsServiceStack = new ProductServiceStack(app, "EComerceProductService",
                 StackProps.builder()
                         .env(environment)
-                        .tags(infraestructureTags)
+                        .tags(productsServiceTags)
                         .build(),
                 new ProductServiceProps(
                         vpcStack.getVpc(),
@@ -66,6 +69,10 @@ public class ECommerceEcsCdkApp {
                         nlbStack, // Pasamos el stack completo para acceder al listener
                         ecrStack.getProductsServiceRepository()
                 ));
+        productsServiceStack.addDependency(vpcStack);
+        productsServiceStack.addDependency(clusterStack);
+        productsServiceStack.addDependency(nlbStack);
+        productsServiceStack.addDependency(ecrStack);
 
         // -----------------------------------------------------------------------------------------------------------
         // 6. Create the API Gateway (Prueba de infraestructura)
@@ -76,7 +83,6 @@ public class ECommerceEcsCdkApp {
                         .tags(infraestructureTags)
                         .build(),
                 nlbStack);
-
         // La API no puede existir sin el VpcLink y el NLB definidos en NlbStack
         apiStack.addDependency(nlbStack);
 
