@@ -1,5 +1,6 @@
 package net.javaguides.rpererv;
 
+import java.util.Arrays;
 import java.util.Collections;
 import software.amazon.awscdk.CfnOutput;
 import software.amazon.awscdk.Stack;
@@ -43,10 +44,25 @@ public class ApiStack extends Stack {
                 .description("URL para probar el encadenamiento NLB -> ALB")
                 .build();
 
-        // RUTA NUEVA: Para el microservicio de productos
+        // GET /api/products
         httpApi.addRoutes(AddRoutesOptions.builder()
                 .path("/api/products") // Coincide con tu Controller de Spring
                 .methods(Collections.singletonList(HttpMethod.GET))
+                .integration(nlbStack.getNlbIntegration())
+                .build());
+
+        // POST /api/products (Crear)
+        httpApi.addRoutes(AddRoutesOptions.builder()
+                .path("/api/products")
+                .methods(Collections.singletonList(HttpMethod.POST))
+                .integration(nlbStack.getNlbIntegration())
+                .build());
+
+        // Rutas con ID: GET, PUT y DELETE /api/products/{id}
+        // En HTTP API v2, se usa la sintaxis {proxy+} o {id}
+        httpApi.addRoutes(AddRoutesOptions.builder()
+                .path("/api/products/{id}")
+                .methods(Arrays.asList(HttpMethod.GET, HttpMethod.PUT, HttpMethod.DELETE))
                 .integration(nlbStack.getNlbIntegration())
                 .build());
 

@@ -7,10 +7,13 @@ import software.amazon.awscdk.Duration;
 import software.amazon.awscdk.RemovalPolicy;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
-import software.amazon.awscdk.services.ec2.*;
+import software.amazon.awscdk.services.dynamodb.*;
+import software.amazon.awscdk.services.ec2.Port;
+import software.amazon.awscdk.services.ec2.SubnetSelection;
+import software.amazon.awscdk.services.ec2.SubnetType;
+import software.amazon.awscdk.services.ec2.Vpc;
 import software.amazon.awscdk.services.ecr.Repository;
 import software.amazon.awscdk.services.ecs.*;
-import software.amazon.awscdk.services.ecs.Protocol;
 import software.amazon.awscdk.services.elasticloadbalancingv2.AddApplicationTargetsProps;
 import software.amazon.awscdk.services.elasticloadbalancingv2.ApplicationProtocol;
 import software.amazon.awscdk.services.elasticloadbalancingv2.ApplicationTargetGroup;
@@ -35,6 +38,18 @@ public class ProductServiceStack extends Stack {
                                ProductServiceProps productServiceProps) {
         super(scope, id, props);
 
+        Table productsDdb = new Table(this, "ProductsDdb", TableProps.builder()
+                .partitionKey(Attribute.builder() // primary key for the DynamoDB table, which will be used to store the products data, and should be unique for each product
+                        .name("id")
+                        .type(AttributeType.STRING)
+                        .build())
+                .tableName("products") // name of the DynamoDB table, which will be used in the application to access the table
+                .removalPolicy(RemovalPolicy.DESTROY) // to delete the table when the stack is deleted, for cleanup purposes
+                .billingMode(BillingMode.PROVISIONED) // to use provisioned billing mode, which allows us to specify the read and write capacity units for the table, which is important for controlling costs and performance
+                .readCapacity(1)
+                .writeCapacity(1)
+                .build());
+
         // 1. Fargate Task Definition
         FargateTaskDefinition fargateTaskDefinition = new FargateTaskDefinition(this, "TaskDefinition",
                 FargateTaskDefinitionProps.builder()
@@ -48,6 +63,7 @@ public class ProductServiceStack extends Stack {
                                 .build())
                         // ------------------------
                         .build());
+        productsDdb.grantReadWriteData(fargateTaskDefinition.getTaskRole()); // to grant read permissions on the DynamoDB table to the Fargate task, which is necessary for the application inside the container to be able to read data from the table
 
         // 2. Log Driver for Container Definition
         AwsLogDriver logDriver = new AwsLogDriver(AwsLogDriverProps.builder()
@@ -64,9 +80,11 @@ public class ProductServiceStack extends Stack {
         // 3. Adding a container to the Fargate Task Definition (using the ECR repository created in the RepositoryStack)
         Map<String, String> envVariables = new HashMap<>();
         envVariables.put("SERVER_PORT", "8080"); // environment variable for the application inside the container, which will be used to configure the port where the application listens
+        envVariables.put("AWS_PRODUCTSDDB_NAME", productsDdb.getTableName());
+        envVariables.put("AWS_REGION", this.getRegion());
 
         fargateTaskDefinition.addContainer("ProductsServiceContainer", ContainerDefinitionOptions.builder()
-                .image(ContainerImage.fromEcrRepository(productServiceProps.repository(), "1.0.0")) // to use the ECR repository created in the RepositoryStack
+                .image(ContainerImage.fromEcrRepository(productServiceProps.repository(), "1.2.1")) // to use the ECR repository created in the RepositoryStack
                         .containerName("productsService")
                 .logging(logDriver) // to use the log driver created above for logging
                         .portMappings(Collections.singletonList(PortMapping.builder()
