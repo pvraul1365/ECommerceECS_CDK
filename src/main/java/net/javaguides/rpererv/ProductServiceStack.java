@@ -18,6 +18,7 @@ import software.amazon.awscdk.services.elasticloadbalancingv2.AddApplicationTarg
 import software.amazon.awscdk.services.elasticloadbalancingv2.ApplicationProtocol;
 import software.amazon.awscdk.services.elasticloadbalancingv2.ApplicationTargetGroup;
 import software.amazon.awscdk.services.elasticloadbalancingv2.HealthCheck;
+import software.amazon.awscdk.services.iam.ManagedPolicy;
 import software.amazon.awscdk.services.logs.LogGroup;
 import software.amazon.awscdk.services.logs.LogGroupProps;
 import software.amazon.awscdk.services.logs.RetentionDays;
@@ -48,6 +49,17 @@ public class ProductServiceStack extends Stack {
                 .billingMode(BillingMode.PROVISIONED) // to use provisioned billing mode, which allows us to specify the read and write capacity units for the table, which is important for controlling costs and performance
                 .readCapacity(1)
                 .writeCapacity(1)
+                .build());
+
+        productsDdb.addGlobalSecondaryIndex(GlobalSecondaryIndexProps.builder()
+                        .indexName("codeIdx") // name of the global secondary index, which will be used in the application to query products by their code
+                        .partitionKey(Attribute.builder()
+                                .name("code")
+                                .type(AttributeType.STRING)
+                                .build())
+                        .projectionType(ProjectionType.KEYS_ONLY)
+                        .readCapacity(1)
+                        .writeCapacity(1)
                 .build());
 
         // 1. Fargate Task Definition
@@ -82,9 +94,13 @@ public class ProductServiceStack extends Stack {
         envVariables.put("SERVER_PORT", "8080"); // environment variable for the application inside the container, which will be used to configure the port where the application listens
         envVariables.put("AWS_PRODUCTSDDB_NAME", productsDdb.getTableName());
         envVariables.put("AWS_REGION", this.getRegion());
+        envVariables.put("AWS_XRAY_DAEMON_ADDRESS", "0.0.0.0:2000"); // to enable AWS X-Ray tracing for the application, which will allow us to monitor and troubleshoot the application in production, and to visualize the traces in the AWS X-Ray console
+        envVariables.put("AWS_XRAY_CONTEXT_MISSING", "IGNORE_ERROR");
+        envVariables.put("AWS_XRAY_TRACING_NAME", "productsservice"); // to set the name of the service in the AWS X-Ray console, which will help us to identify the traces from this
+        envVariables.put("LOGGING_LEVEL_ROOT", "INFO"); // to set the logging level for the application, which will be used in the application to configure the logging behavior (e.g., to log only INFO level messages and above)
 
         fargateTaskDefinition.addContainer("ProductsServiceContainer", ContainerDefinitionOptions.builder()
-                .image(ContainerImage.fromEcrRepository(productServiceProps.repository(), "1.2.1")) // to use the ECR repository created in the RepositoryStack
+                .image(ContainerImage.fromEcrRepository(productServiceProps.repository(), "1.5.0")) // to use the ECR repository created in the RepositoryStack
                         .containerName("productsService")
                 .logging(logDriver) // to use the log driver created above for logging
                         .portMappings(Collections.singletonList(PortMapping.builder()
@@ -92,7 +108,29 @@ public class ProductServiceStack extends Stack {
                                         .protocol(Protocol.TCP)
                                 .build()))
                         .environment(envVariables)
+                        .cpu(384)
+                        .memoryLimitMiB(896)
                 .build());
+
+        fargateTaskDefinition.addContainer("xray", ContainerDefinitionOptions.builder()
+                        .image(ContainerImage.fromRegistry("public.ecr.aws/xray/aws-xray-daemon:latest")) // to use the AWS X-Ray daemon container image from the public ECR registry, which will allow us to collect and send traces from the application to AWS X-Ray
+                        .containerName("XRayProductsService")
+                        .logging(new AwsLogDriver(AwsLogDriverProps.builder()
+                                .logGroup(new LogGroup(this, "XRayLogGroup", LogGroupProps.builder()
+                                        .logGroupName("XRayProductsService")
+                                        .removalPolicy(RemovalPolicy.DESTROY)
+                                        .retention(RetentionDays.ONE_MONTH)
+                                        .build()))
+                                .streamPrefix("XRayProductsService")
+                                .build())) // to use the same log driver for the X-Ray daemon container
+                        .portMappings(Collections.singletonList(PortMapping.builder()
+                                        .containerPort(2000) // port where the X-Ray daemon listens for incoming traces
+                                        .protocol(Protocol.UDP)
+                                .build()))
+                        .cpu(128)
+                        .memoryLimitMiB(128)
+                .build());
+        fargateTaskDefinition.getTaskRole().addManagedPolicy(ManagedPolicy.fromAwsManagedPolicyName("AWSXrayWriteOnlyAccess")); // to grant permissions to the Fargate task role to write traces to AWS X-Ray, which is necessary for the application to be able to send traces to AWS X-Ray
 
         // 4. Create the Fargate Service and associate it with the ALB created in the NlbStack, using private subnets for security
         FargateService fargateService = FargateService.Builder.create(this, "ProductsService")

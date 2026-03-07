@@ -3,12 +3,13 @@ package net.javaguides.rpererv;
 import java.util.Arrays;
 import java.util.Collections;
 import software.amazon.awscdk.CfnOutput;
+import software.amazon.awscdk.RemovalPolicy;
 import software.amazon.awscdk.Stack;
 import software.amazon.awscdk.StackProps;
-import software.amazon.awscdk.services.apigatewayv2.AddRoutesOptions;
-import software.amazon.awscdk.services.apigatewayv2.HttpApi;
-import software.amazon.awscdk.services.apigatewayv2.HttpApiProps;
-import software.amazon.awscdk.services.apigatewayv2.HttpMethod;
+import software.amazon.awscdk.services.apigatewayv2.*;
+import software.amazon.awscdk.services.logs.LogGroup;
+import software.amazon.awscdk.services.logs.LogGroupProps;
+import software.amazon.awscdk.services.logs.RetentionDays;
 import software.constructs.Construct;
 
 /**
@@ -25,10 +26,27 @@ public class ApiStack extends Stack {
     public ApiStack(final Construct scope, final String id, final StackProps props, NlbStack nlbStack) {
         super(scope, id, props);
 
+        LogGroup logGroup = new LogGroup(this, "ECommerceApiLogs", LogGroupProps.builder()
+                .logGroupName("ECommerceApi")
+                .removalPolicy(RemovalPolicy.DESTROY)
+                .retention(RetentionDays.ONE_MONTH)
+                .build());
+
         // 1. Crear la HTTP API (v2)
         HttpApi httpApi = new HttpApi(this, "ECommerceHttpApi", HttpApiProps.builder()
                 .apiName("ECommerceApi")
                 .build());
+
+        // --- AÑADE ESTO PARA LOS LOGS ---
+        // Configuramos el stage por defecto para que envíe logs al LogGroup
+                if (httpApi.getDefaultStage() != null) {
+                    CfnStage cfnStage = (CfnStage) httpApi.getDefaultStage().getNode().getDefaultChild();
+                    cfnStage.setAccessLogSettings(CfnStage.AccessLogSettingsProperty.builder()
+                            .destinationArn(logGroup.getLogGroupArn())
+                            .format("$context.identity.sourceIp - $context.identity.caller - $context.authorizer.principalId [$context.requestTime] \"$context.httpMethod $context.routeKey $context.protocol\" $context.status $context.responseLength $context.requestId")
+                            .build());
+                }
+        // --------------------------------
 
         // 2. Añadir una ruta de prueba que use la integración de tu NlbStack
         // Esta ruta enviará el tráfico a través del VpcLink -> NLB -> ALB
