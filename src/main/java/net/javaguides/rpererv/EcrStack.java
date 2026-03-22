@@ -20,6 +20,7 @@ import software.constructs.Construct;
 public class EcrStack extends Stack {
 
     private final Repository productsServiceRepository;
+    private final Repository auditServiceRepository;
 
     public EcrStack(final Construct scope, final String id, final StackProps props) {
         super(scope, id, props);
@@ -30,9 +31,20 @@ public class EcrStack extends Stack {
                 .imageTagMutability(TagMutability.IMMUTABLE) // to prevent overwriting existing images with the same tag
                 .emptyOnDelete(true) // to automatically delete images when the repository is deleted
                 .build());
+
+        this.auditServiceRepository = new Repository(this, "AuditService", RepositoryProps.builder()
+                .repositoryName("auditservice") // name of the repository, same as the container name in the task definition
+                .removalPolicy(RemovalPolicy.DESTROY) // to automatically delete the repository when the stack is deleted
+                .imageTagMutability(TagMutability.IMMUTABLE) // to prevent overwriting existing images with the same tag
+                .emptyOnDelete(true) // to automatically delete images when the repository is deleted
+                .build());
     }
 
     public Repository getProductsServiceRepository() {
         return productsServiceRepository;
+    }
+
+    public Repository getAuditServiceRepository() {
+        return auditServiceRepository;
     }
 }

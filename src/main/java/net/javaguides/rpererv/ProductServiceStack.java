@@ -22,6 +22,10 @@ import software.amazon.awscdk.services.iam.ManagedPolicy;
 import software.amazon.awscdk.services.logs.LogGroup;
 import software.amazon.awscdk.services.logs.LogGroupProps;
 import software.amazon.awscdk.services.logs.RetentionDays;
+import software.amazon.awscdk.services.sns.Topic;
+import software.amazon.awscdk.services.sns.TopicProps;
+import software.amazon.awscdk.services.sns.subscriptions.EmailSubscription;
+import software.amazon.awscdk.services.sns.subscriptions.EmailSubscriptionProps;
 import software.constructs.Construct;
 
 /**
@@ -35,9 +39,23 @@ import software.constructs.Construct;
  */
 public class ProductServiceStack extends Stack {
 
+    private final Topic productEventsTopic;
+
     public ProductServiceStack(final Construct scope, final String id, final StackProps props,
                                ProductServiceProps productServiceProps) {
         super(scope, id, props);
+
+        this.productEventsTopic = new Topic(this, "ProductEventsTopic", TopicProps.builder()
+                .displayName("Product events topic") // display name for the SNS topic, which will be shown in the AWS Management Console and can help to identify the purpose of the topic
+                .topicName("product-events") // name of the SNS topic, which will be used in the application to publish events related to products (e.g., when a product is created, updated, or deleted)
+                .build());
+
+        // TODO - to be removed, just for testing purposes
+        this.productEventsTopic.addSubscription(new EmailSubscription("raul.perez.vicente@gmail.com",
+                EmailSubscriptionProps.builder()
+                        .json(true) // to receive the notifications in JSON format, which can be useful for parsing the messages in a structured way
+                        .build()
+                ));
 
         Table productsDdb = new Table(this, "ProductsDdb", TableProps.builder()
                 .partitionKey(Attribute.builder() // primary key for the DynamoDB table, which will be used to store the products data, and should be unique for each product
@@ -76,6 +94,7 @@ public class ProductServiceStack extends Stack {
                         // ------------------------
                         .build());
         productsDdb.grantReadWriteData(fargateTaskDefinition.getTaskRole()); // to grant read permissions on the DynamoDB table to the Fargate task, which is necessary for the application inside the container to be able to read data from the table
+        this.productEventsTopic.grantPublish(fargateTaskDefinition.getTaskRole());
 
         // 2. Log Driver for Container Definition
         AwsLogDriver logDriver = new AwsLogDriver(AwsLogDriverProps.builder()
@@ -93,6 +112,7 @@ public class ProductServiceStack extends Stack {
         Map<String, String> envVariables = new HashMap<>();
         envVariables.put("SERVER_PORT", "8080"); // environment variable for the application inside the container, which will be used to configure the port where the application listens
         envVariables.put("AWS_PRODUCTSDDB_NAME", productsDdb.getTableName());
+        envVariables.put("AWS_SNS_TOPIC_PRODUCT_EVENTS", this.productEventsTopic.getTopicArn());
         envVariables.put("AWS_REGION", this.getRegion());
         envVariables.put("AWS_XRAY_DAEMON_ADDRESS", "0.0.0.0:2000"); // to enable AWS X-Ray tracing for the application, which will allow us to monitor and troubleshoot the application in production, and to visualize the traces in the AWS X-Ray console
         envVariables.put("AWS_XRAY_CONTEXT_MISSING", "IGNORE_ERROR");
@@ -100,7 +120,7 @@ public class ProductServiceStack extends Stack {
         envVariables.put("LOGGING_LEVEL_ROOT", "INFO"); // to set the logging level for the application, which will be used in the application to configure the logging behavior (e.g., to log only INFO level messages and above)
 
         fargateTaskDefinition.addContainer("ProductsServiceContainer", ContainerDefinitionOptions.builder()
-                .image(ContainerImage.fromEcrRepository(productServiceProps.repository(), "1.5.0")) // to use the ECR repository created in the RepositoryStack
+                .image(ContainerImage.fromEcrRepository(productServiceProps.repository(), "1.8.0")) // to use the ECR repository created in the RepositoryStack
                         .containerName("productsService")
                 .logging(logDriver) // to use the log driver created above for logging
                         .portMappings(Collections.singletonList(PortMapping.builder()
@@ -164,6 +184,10 @@ public class ProductServiceStack extends Stack {
                                         .port("8080") // to set the port for health checks, which should match the container port where your application listens
                                         .build())
                                 .build());
+    }
+
+    public Topic getProductEventsTopic() {
+        return productEventsTopic;
     }
 
 }

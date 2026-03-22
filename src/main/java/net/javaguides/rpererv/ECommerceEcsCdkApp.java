@@ -54,7 +54,7 @@ public class ECommerceEcsCdkApp {
         nlbStack.addDependency(clusterStack);
 
         // -----------------------------------------------------------------------------------------------------------
-        // 5. Create the Product Service (Fargate Service)
+        // 5.A Create the Product Service (Fargate Service)
         Map<String, String> productsServiceTags = new HashMap<>();
         infraestructureTags.put("team", "RperezvCode");
         infraestructureTags.put("cost", "ProductsService");
@@ -73,6 +73,26 @@ public class ECommerceEcsCdkApp {
         productsServiceStack.addDependency(clusterStack);
         productsServiceStack.addDependency(nlbStack);
         productsServiceStack.addDependency(ecrStack);
+
+        // 5.B Create the Audit Service (Fargate Service)
+        Map<String, String> auditServiceTags = new HashMap<>();
+        infraestructureTags.put("team", "RperezvCode");
+        infraestructureTags.put("cost", "AuditService");
+        AuditServiceStack auditServiceStack = new AuditServiceStack(app, "EComerceAuditService",
+                StackProps.builder()
+                        .env(environment)
+                        .tags(auditServiceTags)
+                        .build(),
+                new AuditServiceProps(
+                        vpcStack.getVpc(),
+                        clusterStack.getCluster(),
+                        nlbStack, // Pasamos el stack completo para acceder al listener
+                        ecrStack.getAuditServiceRepository()
+                ));
+        auditServiceStack.addDependency(vpcStack);
+        auditServiceStack.addDependency(clusterStack);
+        auditServiceStack.addDependency(nlbStack);
+        auditServiceStack.addDependency(ecrStack);
 
         // -----------------------------------------------------------------------------------------------------------
         // 6. Create the API Gateway (Prueba de infraestructura)

@@ -63,6 +63,7 @@ public class ApiStack extends Stack {
                 .build();
 
         // GET /api/products
+        // GET /api/products?code=CODE1
         httpApi.addRoutes(AddRoutesOptions.builder()
                 .path("/api/products") // Coincide con tu Controller de Spring
                 .methods(Collections.singletonList(HttpMethod.GET))
